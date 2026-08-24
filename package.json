@@ -2,6 +2,14 @@
   "name": "eco-drive-api",
   "version": "1.0.0",
   "description": "API backend for Eco-Drive application",
+  "homepage": "https://github.com/mar-one1/Eco-Drive-Api#readme",
+  "bugs": {
+    "url": "https://github.com/mar-one1/Eco-Drive-Api/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mar-one1/Eco-Drive-Api.git"
+  },
   "license": "ISC",
   "author": "",
   "type": "commonjs",

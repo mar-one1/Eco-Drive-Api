@@ -1,19 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const mongoose = require('mongoose');
+const db = require('./db');
 
 dotenv.config();
 
 const app = express();
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/eco-drive', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+// Initialize DB connection with fast timeout & in-memory fallback
+db.connectDB();
 
 // Middleware
 app.use(cors());
@@ -21,11 +16,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/trips', require('./routes/trips'));
+app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/users', require('./routes/users'));
 
-// Basic route
+// Support non-prefixed routes for legacy client requests
+app.use('/auth', require('./routes/auth'));
+app.use('/trips', require('./routes/trips'));
+app.use('/bookings', require('./routes/bookings'));
+
+// Basic status route
 app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to Eco-Drive API' });
+  res.json({
+    message: 'Welcome to Eco-Drive API',
+    status: 'online',
+    database: db.getStatus() ? 'MongoDB (Connected)' : 'In-Memory Fallback (MongoDB Service Stopped)'
+  });
 });
 
 // Error handling middleware
@@ -40,5 +47,5 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Eco-Drive API server running on port ${PORT}`);
 });
