@@ -37,7 +37,7 @@ const tripSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['active', 'completed', 'cancelled'],
+        enum: ['active', 'scheduled', 'in_progress', 'arrived', 'closed', 'completed', 'cancelled'],
         default: 'active'
     },
     createdAt: {

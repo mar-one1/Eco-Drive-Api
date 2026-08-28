@@ -24,7 +24,7 @@ router.post('/register', async (req, res) => {
                 email,
                 password,
                 phone: phone || '',
-                role: role || 'user'
+                role: role === 'admin' ? 'user' : (role || 'user')
             });
 
             await user.save();
@@ -51,7 +51,7 @@ router.post('/register', async (req, res) => {
                 email,
                 password,
                 phone: phone || '',
-                role: role || 'user'
+                role: role === 'admin' ? 'user' : (role || 'user')
             };
             db.memoryDb.users.push(newUser);
 

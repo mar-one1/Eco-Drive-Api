@@ -44,9 +44,10 @@ If MongoDB is unavailable, the API starts in in-memory mode. Data in that mode i
 
 ```http
 GET /
+GET /api/health
 ```
 
-Returns the service status and whether MongoDB or the in-memory fallback is active.
+`GET /` returns the service status and whether MongoDB or the in-memory fallback is active. `GET /api/health` returns a machine-readable status, database mode, uptime, and timestamp.
 
 ## Authentication
 
@@ -71,7 +72,7 @@ PUT    /api/trips/:id
 DELETE /api/trips/:id
 ```
 
-`GET /api/trips` accepts optional `from`, `to`, and `date` query parameters. Trip creation requires `from`, `to`, `date`, `time`, `seats`, and `price`; `driverId` and `driverName` are optional.
+`GET /api/trips` accepts optional `from`, `to`, and `date` query parameters. Trip creation requires `from`, `to`, `date`, `time`, `seats`, and `price`; `driverId` and `driverName` are optional. `seats` must be a non-negative whole number and `price` must be non-negative.
 
 ## Bookings
 
@@ -86,7 +87,7 @@ PATCH  /api/bookings/:id/passenger?passengerId=:passengerId
 DELETE /api/bookings/:id
 ```
 
-Creating a booking requires `tripId` and `passengerId`; `seatsBooked` defaults to `1`. A successful booking reduces available trip seats. Cancellation restores them.
+Creating a booking requires `tripId` and `passengerId`; `seatsBooked` defaults to `1` and must be a positive whole number. The trip must exist and be active. A successful booking reduces available trip seats. Cancellation restores them.
 
 ## Compatibility Routes
 

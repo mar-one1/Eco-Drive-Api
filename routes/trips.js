@@ -1,7 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const Trip = require('../models/Trip');
+const Booking = require('../models/Booking');
+const User = require('../models/User');
 const db = require('../db');
+
+const lifecycleStatuses = ['active', 'scheduled', 'in_progress', 'arrived', 'closed', 'completed', 'cancelled'];
+
+// Admin monitor: returns every trip, including closed and cancelled trips.
+router.get('/admin/all', async (req, res) => {
+    try {
+        if (String(req.get('X-User-Role') || '').toLowerCase() !== 'admin') {
+            return res.status(403).json({ message: 'Admin access required' });
+        }
+        if (db.getStatus()) {
+            const trips = await Trip.find().sort({ date: -1, time: -1 }).lean();
+            return res.json(trips.map(trip => ({ ...trip, id: trip._id.toString() })));
+        }
+        return res.json(db.memoryDb.trips.map(trip => ({ ...trip, id: trip.id || trip._id })));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to retrieve all trips', error: err.message });
+    }
+});
 
 // GET /api/trips
 router.get('/', async (req, res) => {
@@ -110,14 +130,20 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: 'Missing required trip fields' });
         }
 
+        const tripSeats = Number(seats);
+        const tripPrice = Number(price);
+        if (!Number.isInteger(tripSeats) || tripSeats < 0 || !Number.isFinite(tripPrice) || tripPrice < 0) {
+            return res.status(400).json({ message: 'seats must be a non-negative whole number and price must be non-negative' });
+        }
+
         if (db.getStatus()) {
             const newTrip = new Trip({
                 from,
                 to,
                 date,
                 time,
-                seats: Number(seats),
-                price: Number(price),
+                seats: tripSeats,
+                price: tripPrice,
                 driverId: driverId || 'anonymous_driver',
                 driverName: driverName || 'Driver'
             });
@@ -132,8 +158,8 @@ router.post('/', async (req, res) => {
                 to,
                 date,
                 time,
-                seats: Number(seats),
-                price: Number(price),
+                seats: tripSeats,
+                price: tripPrice,
                 driverId: driverId || 'anonymous_driver',
                 driverName: driverName || 'Driver',
                 status: 'active',
@@ -151,6 +177,9 @@ router.post('/', async (req, res) => {
 // PUT /api/trips/:id
 router.put('/:id', async (req, res) => {
     try {
+        if (req.body.status && !lifecycleStatuses.includes(req.body.status)) {
+            return res.status(400).json({ message: 'Invalid trip status' });
+        }
         if (db.getStatus()) {
             const updatedTrip = await Trip.findByIdAndUpdate(req.params.id, req.body, { new: true });
             if (!updatedTrip) return res.status(404).json({ message: 'Trip not found' });

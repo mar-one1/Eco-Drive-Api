@@ -74,11 +74,18 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: 'tripId and passengerId are required' });
         }
 
-        const requestedSeats = Number(seatsBooked) || 1;
+        const requestedSeats = seatsBooked === undefined ? 1 : Number(seatsBooked);
+        if (!Number.isInteger(requestedSeats) || requestedSeats < 1) {
+            return res.status(400).json({ message: 'seatsBooked must be a positive whole number' });
+        }
 
         if (db.getStatus()) {
             const trip = await Trip.findById(tripId);
             if (!trip) return res.status(404).json({ message: 'Trip not found' });
+
+            if (trip.status !== 'active' && trip.status !== 'scheduled') {
+                return res.status(400).json({ message: 'Trip is not available for booking' });
+            }
 
             if (trip.seats < requestedSeats) {
                 return res.status(400).json({ message: 'Not enough available seats for this trip' });
@@ -98,12 +105,14 @@ router.post('/', async (req, res) => {
             return res.status(201).json(savedBooking);
         } else {
             const trip = db.memoryDb.trips.find(t => (t.id || t._id) === tripId);
-            if (trip) {
-                if (trip.seats < requestedSeats) {
-                    return res.status(400).json({ message: 'Not enough available seats for this trip' });
-                }
-                trip.seats -= requestedSeats;
+            if (!trip) return res.status(404).json({ message: 'Trip not found' });
+            if (trip.status && trip.status !== 'active' && trip.status !== 'scheduled') {
+                return res.status(400).json({ message: 'Trip is not available for booking' });
             }
+            if (trip.seats < requestedSeats) {
+                return res.status(400).json({ message: 'Not enough available seats for this trip' });
+            }
+            trip.seats -= requestedSeats;
 
             const id = 'booking_' + Date.now();
             const newBooking = {

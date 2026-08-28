@@ -21,6 +21,15 @@ app.use('/api/trips', require('./routes/trips'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/users', require('./routes/users'));
 
+// New Feature Routes
+app.use('/api/reviews', require('./routes/reviews'));
+app.use('/api/preferences', require('./routes/preferences'));
+app.use('/api/eco-stats', require('./routes/eco-stats'));
+app.use('/api/transactions', require('./routes/transactions'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/saved-trips', require('./routes/saved-trips'));
+app.use('/api/referrals', require('./routes/referrals'));
+
 // Support non-prefixed routes for legacy client requests
 app.use('/auth', require('./routes/auth'));
 app.use('/trips', require('./routes/trips'));
@@ -32,6 +41,15 @@ app.get('/', (req, res) => {
     message: 'Welcome to Eco-Drive API',
     status: 'online',
     database: db.getStatus() ? 'MongoDB (Connected)' : 'In-Memory Fallback (MongoDB Service Stopped)'
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    database: db.getStatus() ? 'mongodb' : 'memory',
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString()
   });
 });
 
