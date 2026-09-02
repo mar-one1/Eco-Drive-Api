@@ -29,6 +29,9 @@ app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/saved-trips', require('./routes/saved-trips'));
 app.use('/api/referrals', require('./routes/referrals'));
+app.use('/api/support', require('./routes/support'));
+app.use('/api/messages', require('./routes/messages'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Support non-prefixed routes for legacy client requests
 app.use('/auth', require('./routes/auth'));

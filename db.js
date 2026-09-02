@@ -6,7 +6,16 @@ let isMongoConnected = false;
 const memoryDb = {
     users: [],
     trips: [],
-    bookings: []
+    bookings: [],
+    reviews: [],
+    notifications: [],
+    ecoStats: [],
+    transactions: [],
+    preferences: [],
+    savedTrips: [],
+    referrals: [],
+    supportTickets: [],
+    messages: []
 };
 
 const connectDB = async () => {

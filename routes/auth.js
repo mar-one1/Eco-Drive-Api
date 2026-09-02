@@ -19,12 +19,14 @@ router.post('/register', async (req, res) => {
                 return res.status(400).json({ message: 'Email already registered' });
             }
 
+            const normalizedRole = (role === 'admin' || role === 'driver' || role === 'passenger') ? role : 'passenger';
+
             const user = new User({
                 name,
                 email,
                 password,
                 phone: phone || '',
-                role: role === 'admin' ? 'user' : (role || 'user')
+                role: normalizedRole
             });
 
             await user.save();
@@ -45,13 +47,15 @@ router.post('/register', async (req, res) => {
                 return res.status(400).json({ message: 'Email already registered' });
             }
 
+            const normalizedRole = (role === 'admin' || role === 'driver' || role === 'passenger') ? role : 'passenger';
+
             const newUser = {
                 _id: 'user_' + Date.now(),
                 name,
                 email,
                 password,
                 phone: phone || '',
-                role: role === 'admin' ? 'user' : (role || 'user')
+                role: normalizedRole
             };
             db.memoryDb.users.push(newUser);
 
