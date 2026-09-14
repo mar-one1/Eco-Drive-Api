@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
 const db = require('../db');
+const notificationService = require('../services/notificationService');
 
 // POST /api/notifications - Create a notification
 router.post('/', async (req, res) => {
@@ -12,35 +13,11 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
-        if (db.getStatus()) {
-            const notification = new Notification({
-                userId,
-                type,
-                title,
-                message,
-                relatedId: relatedId || '',
-                actionUrl: actionUrl || '',
-                read: false
-            });
-
-            const savedNotification = await notification.save();
-            return res.status(201).json({ message: 'Notification created', notification: savedNotification });
-        } else {
-            const notification = {
-                id: Date.now().toString(),
-                userId,
-                type,
-                title,
-                message,
-                relatedId: relatedId || '',
-                actionUrl: actionUrl || '',
-                read: false,
-                createdAt: new Date()
-            };
-            db.memoryDb.notifications = db.memoryDb.notifications || [];
-            db.memoryDb.notifications.push(notification);
-            return res.status(201).json({ message: 'Notification created', notification });
-        }
+        db.memoryDb.notifications = db.memoryDb.notifications || [];
+        const notification = await notificationService.createNotification(req.app.locals.io, {
+            userId, type, title, message, relatedId: relatedId || '', actionUrl: actionUrl || '', read: false
+        });
+        return res.status(201).json({ message: 'Notification created', notification });
     } catch (err) {
         res.status(500).json({ message: 'Failed to create notification', error: err.message });
     }

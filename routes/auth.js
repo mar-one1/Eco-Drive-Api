@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const db = require('../db');
+const bcrypt = require('bcryptjs');
+const { issueToken } = require('../middleware/auth');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -14,7 +16,8 @@ router.post('/register', async (req, res) => {
 
         if (db.getStatus()) {
             // Use MongoDB
-            const existingUser = await User.findOne({ email });
+            const normalizedEmail = String(email).trim().toLowerCase();
+            const existingUser = await User.findOne({ email: normalizedEmail });
             if (existingUser) {
                 return res.status(400).json({ message: 'Email already registered' });
             }
@@ -23,14 +26,14 @@ router.post('/register', async (req, res) => {
 
             const user = new User({
                 name,
-                email,
-                password,
+                email: normalizedEmail,
+                password: await bcrypt.hash(password, 12),
                 phone: phone || '',
                 role: normalizedRole
             });
 
             await user.save();
-            const token = `token_${user._id}_${Date.now()}`;
+            const token = issueToken(user);
 
             return res.status(201).json({
                 message: 'User registered successfully',
@@ -42,7 +45,8 @@ router.post('/register', async (req, res) => {
             });
         } else {
             // Fallback In-Memory
-            const existing = db.memoryDb.users.find(u => u.email === email);
+            const normalizedEmail = String(email).trim().toLowerCase();
+            const existing = db.memoryDb.users.find(u => u.email === normalizedEmail);
             if (existing) {
                 return res.status(400).json({ message: 'Email already registered' });
             }
@@ -52,14 +56,14 @@ router.post('/register', async (req, res) => {
             const newUser = {
                 _id: 'user_' + Date.now(),
                 name,
-                email,
-                password,
+                email: normalizedEmail,
+                password: await bcrypt.hash(password, 12),
                 phone: phone || '',
                 role: normalizedRole
             };
             db.memoryDb.users.push(newUser);
 
-            const token = `token_${newUser._id}_${Date.now()}`;
+            const token = issueToken(newUser);
             return res.status(201).json({
                 message: 'User registered successfully (In-Memory)',
                 token,
@@ -79,19 +83,20 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-
+        console.log('Login attempt:', { email, password: password ? '***' : undefined });
+        
         if (!email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
         if (db.getStatus()) {
             // Use MongoDB
-            const user = await User.findOne({ email });
-            if (!user || user.password !== password) {
+            const user = await User.findOne({ email: String(email).trim().toLowerCase() }).select('+password');
+            if (!user || !(await bcrypt.compare(password, user.password))) {
                 return res.status(401).json({ message: 'Invalid email or password' });
             }
 
-            const token = `token_${user._id}_${Date.now()}`;
+            const token = issueToken(user);
             return res.json({
                 message: 'Login successful',
                 token,
@@ -102,12 +107,12 @@ router.post('/login', async (req, res) => {
             });
         } else {
             // Fallback In-Memory
-            const user = db.memoryDb.users.find(u => u.email === email && u.password === password);
-            if (!user) {
+            const user = db.memoryDb.users.find(u => u.email === String(email).trim().toLowerCase());
+            if (!user || !(await bcrypt.compare(password, user.password))) {
                 return res.status(401).json({ message: 'Invalid email or password' });
             }
 
-            const token = `token_${user._id}_${Date.now()}`;
+            const token = issueToken(user);
             return res.json({
                 message: 'Login successful (In-Memory)',
                 token,

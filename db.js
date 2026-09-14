@@ -19,20 +19,28 @@ const memoryDb = {
 };
 
 const connectDB = async () => {
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/eco-drive';
-    console.log(`Connecting to MongoDB at ${MONGODB_URI}...`);
+    const isProduction = process.env.NODE_ENV === 'production';
+    const MONGODB_URI = process.env.MONGODB_URI;
+
+    if (isProduction && !MONGODB_URI) {
+        throw new Error('MONGODB_URI is required in production');
+    }
+
+    const connectionString = MONGODB_URI || 'mongodb://127.0.0.1:27017/eco-drive';
+    console.log('Connecting to MongoDB...');
 
     try {
-        await mongoose.connect(MONGODB_URI, {
+        await mongoose.connect(connectionString, {
             serverSelectionTimeoutMS: 3000 // Fast timeout (3s) instead of waiting 30s
         });
         isMongoConnected = true;
         console.log('Successfully connected to MongoDB Database!');
     } catch (err) {
         isMongoConnected = false;
-        console.warn('⚠️ Could not connect to local MongoDB service (Service might be stopped).');
-        console.warn('⚠️ Switching to In-Memory Database Fallback mode. All API operations will work smoothly!');
-        console.warn('👉 To use persistent MongoDB, start the service using Admin terminal: net start MongoDB');
+        if (isProduction) {
+            throw new Error(`MongoDB unavailable in production: ${err.message}`);
+        }
+        console.warn('MongoDB unavailable; using in-memory development storage.');
     }
 };
 

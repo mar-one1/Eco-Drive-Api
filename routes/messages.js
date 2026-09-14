@@ -24,12 +24,14 @@ router.post('/', async (req, res) => {
         if (db.getStatus()) {
             const message = new ContactMessage(payload);
             const saved = await message.save();
+            if (req.app.locals.io) req.app.locals.io.to(`user:${receiverId}`).emit('message:new', saved);
             return res.status(201).json({ message: 'Message sent', message: saved });
         }
 
         payload.id = Date.now().toString();
         db.memoryDb.messages = db.memoryDb.messages || [];
         db.memoryDb.messages.push(payload);
+        if (req.app.locals.io) req.app.locals.io.to(`user:${receiverId}`).emit('message:new', payload);
         return res.status(201).json({ message: 'Message sent', message: payload });
     } catch (err) {
         return res.status(500).json({ message: 'Failed to send message', error: err.message });

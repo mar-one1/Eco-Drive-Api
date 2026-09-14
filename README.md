@@ -348,3 +348,20 @@ This keeps older clients working while newer Android app versions use the `/api/
 ## Summary
 
 The Eco-Drive API is the backend engine for the ride-sharing platform. It supports the full driver and rider lifecycle, admin oversight, support functionality, and eco-driven user engagement features used by the Android frontend.
+
+## Live carpooling capabilities
+
+The API now also provides:
+
+- `GET /api/location/search?q=Rabat` and `GET /api/location/reverse?lat=34.02&lng=-6.84`
+- `POST /api/routes/calculate` for normalized OSRM distance, ETA, and geometry
+- Geographic trip fields (`origin`, `destination`, `departureTime`, route data, and `currentLocation`)
+- `GET /api/trips/nearby` and `GET /api/trips/matching`
+- `POST /api/trips/:id/location`, `/start`, `/complete`, and `/cancel`
+- Socket.IO events for `driver:location:update`, `trip:location:update`, `trip:started`, `trip:completed`, `trip:cancelled`, `message:new`, and `notification:new`
+
+Use `Authorization: Bearer <token>` with JWTs returned by registration and login. Passwords are hashed with bcrypt. Socket.IO clients must send the same token in `auth.token` and join a trip using `trip:join`.
+
+MongoDB remains optional for development only. In production, `MONGODB_URI` is mandatory and startup fails if MongoDB cannot be reached. Nominatim and OSRM are public services with usage limits; configure a descriptive `NOMINATIM_USER_AGENT`, cache requests, and use a hosted provider for production traffic.
+
+See `.env.example` for the complete configuration. Run `npm test` for deterministic service tests.

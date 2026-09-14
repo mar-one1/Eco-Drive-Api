@@ -80,19 +80,20 @@ router.post('/', async (req, res) => {
         }
 
         if (db.getStatus()) {
-            const trip = await Trip.findById(tripId);
-            if (!trip) return res.status(404).json({ message: 'Trip not found' });
-
-            if (trip.status !== 'active' && trip.status !== 'scheduled') {
-                return res.status(400).json({ message: 'Trip is not available for booking' });
+            const trip = await Trip.findOneAndUpdate(
+                { _id: tripId, status: { $in: ['active', 'scheduled'] }, seats: { $gte: requestedSeats } },
+                [
+                    { $set: {
+                        seats: { $subtract: ['$seats', requestedSeats] },
+                        availableSeats: { $subtract: [{ $ifNull: ['$availableSeats', '$seats'] }, requestedSeats] }
+                    } }
+                ],
+                { new: true }
+            );
+            if (!trip) {
+                const exists = await Trip.exists({ _id: tripId });
+                return res.status(exists ? 400 : 404).json({ message: exists ? 'Trip is unavailable or has insufficient seats' : 'Trip not found' });
             }
-
-            if (trip.seats < requestedSeats) {
-                return res.status(400).json({ message: 'Not enough available seats for this trip' });
-            }
-
-            trip.seats -= requestedSeats;
-            await trip.save();
 
             const newBooking = new Booking({
                 tripId,
@@ -113,6 +114,7 @@ router.post('/', async (req, res) => {
                 return res.status(400).json({ message: 'Not enough available seats for this trip' });
             }
             trip.seats -= requestedSeats;
+            trip.availableSeats = trip.seats;
 
             const id = 'booking_' + Date.now();
             const newBooking = {
@@ -143,11 +145,8 @@ router.put('/:id', async (req, res) => {
 
             // Restore seats if transitioning to cancelled
             if (status === 'cancelled' && booking.status !== 'cancelled') {
-                const trip = await Trip.findById(booking.tripId);
-                if (trip) {
-                    trip.seats += (booking.seatsBooked || 1);
-                    await trip.save();
-                }
+                const seatsToRestore = booking.seatsBooked || 1;
+                await Trip.findByIdAndUpdate(booking.tripId, [{ $set: { seats: { $add: ['$seats', seatsToRestore] }, availableSeats: { $add: [{ $ifNull: ['$availableSeats', '$seats'] }, seatsToRestore] } } }]);
             }
 
             const updated = await Booking.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -161,6 +160,7 @@ router.put('/:id', async (req, res) => {
                 const trip = db.memoryDb.trips.find(t => (t.id || t._id) === booking.tripId);
                 if (trip) {
                     trip.seats += (booking.seatsBooked || 1);
+                    trip.availableSeats = trip.seats;
                 }
             }
 
@@ -201,11 +201,8 @@ router.delete('/:id', async (req, res) => {
             if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
             if (booking.status !== 'cancelled') {
-                const trip = await Trip.findById(booking.tripId);
-                if (trip) {
-                    trip.seats += (booking.seatsBooked || 1);
-                    await trip.save();
-                }
+                const seatsToRestore = booking.seatsBooked || 1;
+                await Trip.findByIdAndUpdate(booking.tripId, [{ $set: { seats: { $add: ['$seats', seatsToRestore] }, availableSeats: { $add: [{ $ifNull: ['$availableSeats', '$seats'] }, seatsToRestore] } } }]);
             }
 
             await Booking.findByIdAndDelete(req.params.id);
@@ -219,6 +216,7 @@ router.delete('/:id', async (req, res) => {
                 const trip = db.memoryDb.trips.find(t => (t.id || t._id) === booking.tripId);
                 if (trip) {
                     trip.seats += (booking.seatsBooked || 1);
+                    trip.availableSeats = trip.seats;
                 }
             }
 
