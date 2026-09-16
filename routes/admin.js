@@ -5,14 +5,10 @@ const Trip = require('../models/Trip');
 const Booking = require('../models/Booking');
 const SupportTicket = require('../models/SupportTicket');
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
+const authorize = require('../middleware/authorize');
 
-const requireAdmin = (req, res, next) => {
-    const role = String(req.get('X-User-Role') || req.headers['x-user-role'] || '').toLowerCase();
-    if (role !== 'admin') {
-        return res.status(403).json({ message: 'Admin access required' });
-    }
-    return next();
-};
+router.use(authenticate, authorize('admin'));
 
 const normalizeUser = (user) => {
     const rawId = user.userId || user._id || user.id;
@@ -42,8 +38,6 @@ const normalizeSupportTicket = (ticket) => {
         updatedAt: ticket.updatedAt || new Date().toISOString()
     };
 };
-
-router.use(requireAdmin);
 
 router.get('/stats', async (req, res) => {
     try {
@@ -141,6 +135,51 @@ router.put('/users/:userId/role', async (req, res) => {
     }
 });
 
+// PUT /api/admin/users/:userId/ban - Ban/unban a user
+router.put('/users/:userId/ban', async (req, res) => {
+    try {
+        if (String(req.params.userId) === String(req.user.userId)) {
+            return res.status(400).json({ message: 'You cannot ban your own account' });
+        }
+        const banned = req.body.isBanned !== undefined ? Boolean(req.body.isBanned) : true;
+
+        if (db.getStatus()) {
+            const user = await User.findByIdAndUpdate(req.params.userId, { isBanned: banned }, { new: true }).select('-password');
+            if (!user) return res.status(404).json({ message: 'User not found' });
+            return res.json(normalizeUser(user.toJSON ? user.toJSON() : user));
+        }
+
+        const userIndex = (db.memoryDb.users || []).findIndex(item => String(item._id) === String(req.params.userId));
+        if (userIndex === -1) return res.status(404).json({ message: 'User not found' });
+        db.memoryDb.users[userIndex].isBanned = banned;
+        return res.json(normalizeUser(db.memoryDb.users[userIndex]));
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to update user ban status', error: error.message });
+    }
+});
+
+// DELETE /api/admin/users/:userId - Permanently delete a user
+router.delete('/users/:userId', async (req, res) => {
+    try {
+        if (String(req.params.userId) === String(req.user.userId)) {
+            return res.status(400).json({ message: 'You cannot delete your own account' });
+        }
+
+        if (db.getStatus()) {
+            const user = await User.findByIdAndDelete(req.params.userId);
+            if (!user) return res.status(404).json({ message: 'User not found' });
+            return res.json({ message: 'User deleted successfully' });
+        }
+
+        const userIndex = (db.memoryDb.users || []).findIndex(item => String(item._id) === String(req.params.userId));
+        if (userIndex === -1) return res.status(404).json({ message: 'User not found' });
+        db.memoryDb.users.splice(userIndex, 1);
+        return res.json({ message: 'User deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to delete user', error: error.message });
+    }
+});
+
 router.get('/trips', async (req, res) => {
     try {
         if (db.getStatus()) {
@@ -180,6 +219,26 @@ router.put('/trips/:id/status', async (req, res) => {
         return res.json({ ...db.memoryDb.trips[index], id: db.memoryDb.trips[index].id || db.memoryDb.trips[index]._id });
     } catch (error) {
         res.status(500).json({ message: 'Failed to update trip status', error: error.message });
+    }
+});
+
+// DELETE /api/admin/trips/:id - Delete any trip
+router.delete('/trips/:id', async (req, res) => {
+    try {
+        if (db.getStatus()) {
+            const trip = await Trip.findByIdAndDelete(req.params.id);
+            if (!trip) return res.status(404).json({ message: 'Trip not found' });
+            if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:deleted', { tripId: req.params.id });
+            return res.json({ message: 'Trip deleted successfully' });
+        }
+
+        const index = (db.memoryDb.trips || []).findIndex(item => String(item.id || item._id) === String(req.params.id));
+        if (index === -1) return res.status(404).json({ message: 'Trip not found' });
+        db.memoryDb.trips.splice(index, 1);
+        if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:deleted', { tripId: req.params.id });
+        return res.json({ message: 'Trip deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to delete trip', error: error.message });
     }
 });
 

@@ -7,15 +7,16 @@ const db = require('../db');
 const routingService = require('../services/routingService');
 const { matchTrips, distanceKm } = require('../services/tripMatchingService');
 const locationService = require('../services/locationService');
+const { authenticate } = require('../middleware/auth');
+const authorize = require('../middleware/authorize');
 
 const lifecycleStatuses = ['active', 'scheduled', 'in_progress', 'arrived', 'closed', 'completed', 'cancelled'];
 
+const isOwnerOrAdmin = (req, trip) => req.user && (String(trip.driverId) === String(req.user.userId) || req.user.role === 'admin');
+
 // Admin monitor: returns every trip, including closed and cancelled trips.
-router.get('/admin/all', async (req, res) => {
+router.get('/admin/all', authenticate, authorize('admin'), async (req, res) => {
     try {
-        if (String(req.get('X-User-Role') || '').toLowerCase() !== 'admin') {
-            return res.status(403).json({ message: 'Admin access required' });
-        }
         if (db.getStatus()) {
             const trips = await Trip.find().sort({ date: -1, time: -1 }).lean();
             return res.json(trips.map(trip => ({ ...trip, id: trip._id.toString() })));
@@ -115,7 +116,7 @@ router.get('/matching', async (req, res) => {
     }
 });
 
-router.post('/:id/location', async (req, res) => {
+router.post('/:id/location', authenticate, async (req, res) => {
     try {
         const trip = await locationService.updateTripLocation(req.params.id, req.body, req.user && req.user.userId);
         if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:location:update', { tripId: req.params.id, location: trip.currentLocation });
@@ -131,15 +132,15 @@ const changeLifecycle = (from, to) => {
     return (allowed[from] || []).includes(to);
 };
 
-router.post('/:id/start', async (req, res) => {
+router.post('/:id/start', authenticate, async (req, res) => {
     return updateLifecycle(req, res, 'started');
 });
 
-router.post('/:id/complete', async (req, res) => {
+router.post('/:id/complete', authenticate, async (req, res) => {
     return updateLifecycle(req, res, 'completed');
 });
 
-router.post('/:id/cancel', async (req, res) => {
+router.post('/:id/cancel', authenticate, async (req, res) => {
     return updateLifecycle(req, res, 'cancelled');
 });
 
@@ -231,9 +232,13 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/trips - Create new trip
-router.post('/', async (req, res) => {
+router.post('/', authenticate, authorize('driver', 'admin'), async (req, res) => {
     try {
         const { from, to, date, time, seats, price, driverId, driverName, origin, destination, departureTime } = req.body;
+
+        if (req.user.role !== 'admin' && driverId && String(driverId) !== String(req.user.userId)) {
+            return res.status(403).json({ message: 'You can only create trips as yourself' });
+        }
 
         if (!from || !to || !date || !time || seats === undefined || price === undefined) {
             return res.status(400).json({ message: 'Missing required trip fields' });
@@ -254,6 +259,9 @@ router.post('/', async (req, res) => {
             }
         }
 
+        const ownerId = driverId || req.user.userId;
+        const ownerName = driverName || req.user.name || 'Driver';
+
         if (db.getStatus()) {
             const newTrip = new Trip({
                 from,
@@ -262,8 +270,8 @@ router.post('/', async (req, res) => {
                 time,
                 seats: tripSeats,
                 price: tripPrice,
-                driverId: driverId || 'anonymous_driver',
-                driverName: driverName || 'Driver',
+                driverId: ownerId,
+                driverName: ownerName,
                 origin,
                 destination,
                 departureTime: departureTime ? new Date(departureTime) : undefined,
@@ -273,6 +281,7 @@ router.post('/', async (req, res) => {
                 routeGeometry: route.geometry
             });
             const savedTrip = await newTrip.save();
+            if (req.app.locals.io) req.app.locals.io.emit('trip:created', savedTrip);
             return res.status(201).json(savedTrip);
         } else {
             const id = 'trip_' + Date.now();
@@ -285,8 +294,8 @@ router.post('/', async (req, res) => {
                 time,
                 seats: tripSeats,
                 price: tripPrice,
-                driverId: driverId || 'anonymous_driver',
-                driverName: driverName || 'Driver',
+                driverId: ownerId,
+                driverName: ownerName,
                 origin,
                 destination,
                 departureTime: departureTime ? new Date(departureTime) : undefined,
@@ -298,6 +307,7 @@ router.post('/', async (req, res) => {
                 createdAt: new Date()
             };
             db.memoryDb.trips.push(newTrip);
+            if (req.app.locals.io) req.app.locals.io.emit('trip:created', newTrip);
             return res.status(201).json(newTrip);
         }
     } catch (err) {
@@ -307,19 +317,25 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/trips/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticate, async (req, res) => {
     try {
         if (req.body.status && !lifecycleStatuses.includes(req.body.status)) {
             return res.status(400).json({ message: 'Invalid trip status' });
         }
         if (db.getStatus()) {
+            const existing = await Trip.findById(req.params.id);
+            if (!existing) return res.status(404).json({ message: 'Trip not found' });
+            if (!isOwnerOrAdmin(req, existing)) return res.status(403).json({ message: 'Only the driver or admin can update this trip' });
+
             const updatedTrip = await Trip.findByIdAndUpdate(req.params.id, req.body, { new: true });
-            if (!updatedTrip) return res.status(404).json({ message: 'Trip not found' });
+            if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:updated', updatedTrip);
             return res.json(updatedTrip);
         } else {
             const index = db.memoryDb.trips.findIndex(t => (t.id || t._id) === req.params.id);
             if (index === -1) return res.status(404).json({ message: 'Trip not found' });
+            if (!isOwnerOrAdmin(req, db.memoryDb.trips[index])) return res.status(403).json({ message: 'Only the driver or admin can update this trip' });
             db.memoryDb.trips[index] = { ...db.memoryDb.trips[index], ...req.body };
+            if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:updated', db.memoryDb.trips[index]);
             return res.json(db.memoryDb.trips[index]);
         }
     } catch (err) {
@@ -328,16 +344,22 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/trips/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticate, async (req, res) => {
     try {
         if (db.getStatus()) {
+            const existing = await Trip.findById(req.params.id);
+            if (!existing) return res.status(404).json({ message: 'Trip not found' });
+            if (!isOwnerOrAdmin(req, existing)) return res.status(403).json({ message: 'Only the driver or admin can delete this trip' });
+
             const deletedTrip = await Trip.findByIdAndDelete(req.params.id);
-            if (!deletedTrip) return res.status(404).json({ message: 'Trip not found' });
+            if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:deleted', { tripId: req.params.id });
             return res.json({ message: 'Trip deleted successfully' });
         } else {
             const index = db.memoryDb.trips.findIndex(t => (t.id || t._id) === req.params.id);
             if (index === -1) return res.status(404).json({ message: 'Trip not found' });
+            if (!isOwnerOrAdmin(req, db.memoryDb.trips[index])) return res.status(403).json({ message: 'Only the driver or admin can delete this trip' });
             db.memoryDb.trips.splice(index, 1);
+            if (req.app.locals.io) req.app.locals.io.to(`trip:${req.params.id}`).emit('trip:deleted', { tripId: req.params.id });
             return res.json({ message: 'Trip deleted successfully' });
         }
     } catch (err) {

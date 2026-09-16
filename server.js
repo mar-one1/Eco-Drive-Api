@@ -106,6 +106,10 @@ const createRealtimeServer = (application) => {
         : db.memoryDb.bookings.some((item) => String(item.tripId) === String(tripId) && String(item.passengerId) === String(socket.user.userId) && item.status !== 'cancelled');
       if (isDriver || isPassenger || socket.user.role === 'admin') socket.join(`trip:${tripId}`);
     });
+    socket.on('trip:leave', (tripId) => {
+      if (!tripId) return;
+      socket.leave(`trip:${tripId}`);
+    });
     socket.on('driver:location:update', async (payload, callback = () => {}) => {
       try {
         if (socket.user.role !== 'driver' && socket.user.role !== 'admin') throw Object.assign(new Error('Driver role required'), { code: 'FORBIDDEN' });

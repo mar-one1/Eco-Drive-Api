@@ -157,4 +157,28 @@ router.post('/:userId/blacklist', async (req, res) => {
     }
 });
 
+// DELETE /api/preferences/:userId/blacklist/:blockedUserId - Remove a user from the blacklist
+router.delete('/:userId/blacklist/:blockedUserId', async (req, res) => {
+    try {
+        const { blockedUserId } = req.params;
+
+        if (db.getStatus()) {
+            const preference = await UserPreference.findOneAndUpdate(
+                { userId: req.params.userId },
+                { $pull: { blacklist: { userId: blockedUserId } } },
+                { new: true }
+            );
+            if (!preference) return res.status(404).json({ message: 'Preferences not found' });
+            return res.json({ message: 'User removed from blacklist', preference });
+        }
+
+        const pref = (db.memoryDb.preferences || []).find(p => p.userId === req.params.userId);
+        if (!pref) return res.status(404).json({ message: 'Preferences not found' });
+        pref.blacklist = (pref.blacklist || []).filter(item => String(item.userId) !== String(blockedUserId));
+        return res.json({ message: 'User removed from blacklist', preference: pref });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to remove from blacklist', error: err.message });
+    }
+});
+
 module.exports = router;

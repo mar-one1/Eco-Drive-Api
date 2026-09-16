@@ -65,53 +65,8 @@ router.get('/user/:userId', async (req, res) => {
     }
 });
 
-// GET /api/transactions/:id - Get a specific transaction
-router.get('/:id', async (req, res) => {
-    try {
-        if (db.getStatus()) {
-            const transaction = await Transaction.findById(req.params.id);
-            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
-            return res.json(transaction);
-        } else {
-            const transaction = (db.memoryDb.transactions || []).find(t => t.id === req.params.id);
-            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
-            return res.json(transaction);
-        }
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to fetch transaction', error: err.message });
-    }
-});
-
-// PUT /api/transactions/:id - Update transaction status
-router.put('/:id', async (req, res) => {
-    try {
-        const { status } = req.body;
-
-        if (!status) {
-            return res.status(400).json({ message: 'status is required' });
-        }
-
-        if (db.getStatus()) {
-            const transaction = await Transaction.findByIdAndUpdate(
-                req.params.id,
-                { status },
-                { new: true }
-            );
-
-            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
-            return res.json({ message: 'Transaction updated', transaction });
-        } else {
-            const transaction = (db.memoryDb.transactions || []).find(t => t.id === req.params.id);
-            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
-            transaction.status = status;
-            return res.json({ message: 'Transaction updated', transaction });
-        }
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to update transaction', error: err.message });
-    }
-});
-
 // GET /api/transactions/stats/summary/:userId - Get transaction summary for user
+// Registered before /:id so the 'stats' segment is never captured as an id.
 router.get('/stats/summary/:userId', async (req, res) => {
     try {
         if (db.getStatus()) {
@@ -159,6 +114,52 @@ router.get('/stats/summary/:userId', async (req, res) => {
         }
     } catch (err) {
         res.status(500).json({ message: 'Failed to fetch summary', error: err.message });
+    }
+});
+
+// GET /api/transactions/:id - Get a specific transaction
+router.get('/:id', async (req, res) => {
+    try {
+        if (db.getStatus()) {
+            const transaction = await Transaction.findById(req.params.id);
+            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+            return res.json(transaction);
+        } else {
+            const transaction = (db.memoryDb.transactions || []).find(t => t.id === req.params.id);
+            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+            return res.json(transaction);
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch transaction', error: err.message });
+    }
+});
+
+// PUT /api/transactions/:id - Update transaction status
+router.put('/:id', async (req, res) => {
+    try {
+        const { status } = req.body;
+
+        if (!status) {
+            return res.status(400).json({ message: 'status is required' });
+        }
+
+        if (db.getStatus()) {
+            const transaction = await Transaction.findByIdAndUpdate(
+                req.params.id,
+                { status },
+                { new: true }
+            );
+
+            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+            return res.json({ message: 'Transaction updated', transaction });
+        } else {
+            const transaction = (db.memoryDb.transactions || []).find(t => t.id === req.params.id);
+            if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+            transaction.status = status;
+            return res.json({ message: 'Transaction updated', transaction });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update transaction', error: err.message });
     }
 });
 
